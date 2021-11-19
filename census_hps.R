@@ -19,14 +19,22 @@ library(fst) # efficient way to read/write large datasets
 ##########################################
 
 # get all the URLs on this page
+# census_urls <- GET("https://www.census.gov/programs-surveys/household-pulse-survey/datasets.html") %>%
+#   read_html() %>% 
+#   html_elements("a.uscb-layout-align-start-start") %>% 
+#   html_attr("href") %>% 
+#   as.character()
+# N.B. This code no longer works due to some changes on the site.
+# This alternative code should be more robust:
+# First grab all the hyperlinks, then filter to the relevant ones
 census_urls <- GET("https://www.census.gov/programs-surveys/household-pulse-survey/datasets.html") %>%
-  read_html() %>% 
-  html_elements("a.uscb-layout-align-start-start") %>% 
-  html_attr("href") %>% 
+  read_html() %>%
+  html_elements("a") %>%
+  html_attr("href") %>%
   as.character()
 
 # subset to just the CSV files
-census_urls <- census_urls[str_detect(census_urls, "CSV.zip")]
+census_urls <- census_urls[str_detect(census_urls, "CSV.zip")] %>% na.omit()
 census_urls <- paste0("https:", census_urls)
 
 # file names
@@ -35,7 +43,8 @@ census_filenames <- unlist(lapply(str_split(census_urls, "HPS_"), function(x)(x[
 # download each file
 for (i in 1:length(census_urls)){
   download.file(census_urls[i], 
-                destfile = paste0("Data/Census_HPS/Raw/",census_filenames[i]))
+                destfile = paste0("Data/Census_HPS/Raw/",
+                                  census_filenames[i]))
 }
 
 # unzip
@@ -61,8 +70,8 @@ table(hps$ANXIOUS)
 hps %>% 
   select(WEEK, ANXIOUS) %>% 
   mutate(anxious_mostdays = case_when(ANXIOUS<0 ~ NA_real_,
-                                          ANXIOUS %in% c(1,2) ~ 0,
-                                          ANXIOUS %in% c(3,4) ~ 1)) %>%
+                                      ANXIOUS %in% c(1,2) ~ 0,
+                                      ANXIOUS %in% c(3,4) ~ 1)) %>%
   group_by(WEEK) %>%
   summarize(mean_anxious_mostdays = mean(anxious_mostdays, na.rm=TRUE)) %>%
   ggplot(aes(x=WEEK, y=mean_anxious_mostdays*100)) + 
