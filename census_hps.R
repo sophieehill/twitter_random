@@ -1,66 +1,77 @@
 ##########################################
 # description:
-# This script allows you to download all available 
+# This script allows you to download all available
 # waves of the Census Household Pulse survey
 # and bind them together into "long" format.
 # Sophie Hill, 9/12/21
+# Last updated 5/30/22
 ##########################################
 
 ##########################################
 # load packages
 ##########################################
+library(tidyverse)
 library(rvest) # for reading HTML
 library(httr) # for GET request
 library(purrr) # for binding lots of datasets together
 library(fst) # efficient way to read/write large datasets
+library(srvyr) # for weighted means
+library(stringr) # for parsing file names
 
 ##########################################
 # web scraping
 ##########################################
 
-# get all the URLs on this page
-# census_urls <- GET("https://www.census.gov/programs-surveys/household-pulse-survey/datasets.html") %>%
-#   read_html() %>% 
-#   html_elements("a.uscb-layout-align-start-start") %>% 
-#   html_attr("href") %>% 
-#   as.character()
-# N.B. This code no longer works due to some changes on the site.
-# This alternative code should be more robust:
+# set file path - change to wherever you want to download the raw files
+# (N.B. there are a lot so best to create a new subfolder!)
+my_file_path <- "Data/Census_HPS/Raw/"
+
 # First grab all the hyperlinks, then filter to the relevant ones
-census_urls <- GET("https://www.census.gov/programs-surveys/household-pulse-survey/datasets.html") %>%
+census_urls <-
+  GET("https://www.census.gov/programs-surveys/household-pulse-survey/datasets.html") %>%
   read_html() %>%
   html_elements("a") %>%
   html_attr("href") %>%
   as.character()
 
 # subset to just the CSV files
-census_urls <- census_urls[str_detect(census_urls, "CSV.zip")] %>% na.omit()
+census_urls <-
+  census_urls[str_detect(census_urls, "CSV.zip")] %>% na.omit()
 census_urls <- paste0("https:", census_urls)
 
+# some URLs have start with "https:https://" instead of just "https://"
+# let's fix that:
+census_urls <- gsub("https:https://", "https://", census_urls)
+
 # file names
-census_filenames <- unlist(lapply(str_split(census_urls, "HPS_"), function(x)(x[2])))
+census_filenames <-
+  unlist(lapply(str_split(census_urls, "HPS_"), function(x)
+    (x[2])))
 
 # download each file
-for (i in 1:length(census_urls)){
-  download.file(census_urls[i], 
-                destfile = paste0("Data/Census_HPS/Raw/",
-                                  census_filenames[i]))
+for (i in 1:length(census_urls)) {
+  download.file(census_urls[i],
+                destfile = paste0(my_file_path, census_filenames[i]))
 }
 
 # unzip
-for (i in 1:length(census_urls)){
-  unzip(paste0("Data/Census_HPS/Raw/",census_filenames[i]), exdir="Data/Census_HPS/Raw/")
+for (i in 1:length(census_urls)) {
+  unzip(paste0(my_file_path, census_filenames[i]), exdir = my_file_path)
 }
 
 # select the raw data
 # (not the weights files or the data dictionaries)
-file_list <- list.files("Data/Census_HPS/Raw/")
-file_list <- file_list[str_detect(file_list, ".csv") & !str_detect(file_list, "repwgt")]
+file_list <- list.files(my_file_path)
+file_list <-
+  file_list[str_detect(file_list, ".csv") &
+              !str_detect(file_list, "repwgt")]
 
 # bind together
-hps <- paste0("Data/Census_HPS/Raw/", file_list) %>% 
-  lapply(read_csv) %>% 
+hps <- paste0(my_file_path, file_list) %>%
+  lapply(read_csv) %>%
   bind_rows()
+# save file
+write_fst(hps, "hps_combined.fst")
 
 head(hps)
 table(hps$WEEK)
